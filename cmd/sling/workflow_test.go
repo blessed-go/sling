@@ -40,6 +40,9 @@ func TestWorkflow_MultiService(t *testing.T) {
 	assertFileExists(t, filepath.Join(projectDir, "cmd", "orders", "main.go"))
 	assertFileExists(t, filepath.Join(projectDir, "internal", "orders", "domain.go"))
 	assertFileExists(t, filepath.Join(projectDir, "conf", "orders.toml"))
+	assertFileExists(t, filepath.Join(projectDir, ".gitignore"))
+	assertFileExists(t, filepath.Join(projectDir, ".dockerignore"))
+	assertFileExists(t, filepath.Join(projectDir, ".env.example"))
 
 	t.Log("adding subdomain 'fulfillment' inside service 'orders'")
 	if err := handleAdd(projectDir, "orders/fulfillment"); err != nil {
@@ -73,6 +76,20 @@ func TestWorkflow_MultiService(t *testing.T) {
 	assertFileExists(t, filepath.Join(projectDir, "cmd", "billing", "main.go"))
 	assertFileExists(t, filepath.Join(projectDir, "internal", "billing", "domain.go"))
 	assertFileExists(t, filepath.Join(projectDir, "conf", "billing.toml"))
+
+	composeContent := readFile(t, filepath.Join(projectDir, "deployment", "docker-compose.yaml"))
+	if !strings.Contains(composeContent, "billing.compose.yaml") {
+		t.Fatalf("billing.compose.yaml not registered in docker-compose.yaml include list:\n%s", composeContent)
+	}
+
+	ordersCompose := readFile(t, filepath.Join(projectDir, "deployment", "orders.compose.yaml"))
+	if !strings.Contains(ordersCompose, "2345:2345") {
+		t.Fatalf("orders.compose.yaml missing delve port 2345:\n%s", ordersCompose)
+	}
+	billingCompose := readFile(t, filepath.Join(projectDir, "deployment", "billing.compose.yaml"))
+	if !strings.Contains(billingCompose, "2346:2345") {
+		t.Fatalf("billing.compose.yaml missing delve port 2346:\n%s", billingCompose)
+	}
 
 	t.Log("adding subdomain 'fulfillment' to service 'billing' (namespace collision check)")
 	if err := handleAdd(projectDir, "billing/fulfillment"); err != nil {
