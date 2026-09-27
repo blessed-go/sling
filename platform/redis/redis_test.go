@@ -78,12 +78,13 @@ func TestRedisIntegration(t *testing.T) {
 
 func startRedisContainer(t *testing.T) string {
 	t.Helper()
-	cmd := exec.Command("docker", "run", "-d", "-P", "--rm", "redis:8-alpine")
+	cmd := exec.Command("docker", "run", "-d", "-P", "--rm", "valkey/valkey:9")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("failed to start redis container: %v\n%s", err, string(out))
 	}
-	return strings.TrimSpace(string(out))
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 func getContainerPort(t *testing.T, containerID, internalPort string) string {

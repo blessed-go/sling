@@ -25,10 +25,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// TestUserStory_GoldenFlow executes the complete Happy Path developer journey:
-// Alice initializes a multi-service workspace, adds subdomains with isolated tables and caches,
-// links the local platform, adds services while linked, unlinks, and builds all binaries cleanly.
-func TestUserStory_GoldenFlow(t *testing.T) {
+// TestWorkflow_MultiService verifies end-to-end scaffolding of a multi-service workspace,
+// including subdomain creation, table/cache isolation, local linking, and clean compilation.
+func TestWorkflow_MultiService(t *testing.T) {
 	tempDir := t.TempDir()
 	projectName := "store"
 	projectDir := filepath.Join(tempDir, projectName)
@@ -38,12 +37,12 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 		t.Fatalf("failed to resolve sling repo root: %v", err)
 	}
 
-	t.Log("Step 1: Alice verifies sling version")
+	t.Log("verifying CLI version")
 	if version != "v0.1.0" {
 		t.Fatalf("expected version v0.1.0, got %s", version)
 	}
 
-	t.Log("Step 2: Alice initializes project workspace with first service 'orders'")
+	t.Log("initializing project workspace with first service 'orders'")
 	if err := initProject(projectDir, "orders"); err != nil {
 		t.Fatalf("initProject failed: %v", err)
 	}
@@ -53,7 +52,7 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 	assertFileExists(t, filepath.Join(projectDir, "internal", "orders", "domain.go"))
 	assertFileExists(t, filepath.Join(projectDir, "conf", "orders.toml"))
 
-	t.Log("Step 3: Alice adds subdomain 'fulfillment' inside service 'orders'")
+	t.Log("adding subdomain 'fulfillment' inside service 'orders'")
 	if err := handleAdd(projectDir, "orders/fulfillment"); err != nil {
 		t.Fatalf("handleAdd for orders/fulfillment failed: %v", err)
 	}
@@ -78,7 +77,7 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 		t.Fatalf("orders/fulfillment cache key does not contain composite prefix:\n%s", cachedRepo)
 	}
 
-	t.Log("Step 4: Alice adds independent microservice 'billing'")
+	t.Log("adding independent microservice 'billing'")
 	if err := handleAdd(projectDir, "billing"); err != nil {
 		t.Fatalf("handleAdd for billing failed: %v", err)
 	}
@@ -86,7 +85,7 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 	assertFileExists(t, filepath.Join(projectDir, "internal", "billing", "domain.go"))
 	assertFileExists(t, filepath.Join(projectDir, "conf", "billing.toml"))
 
-	t.Log("Step 5: Alice adds subdomain 'fulfillment' with the SAME name to service 'billing'")
+	t.Log("adding subdomain 'fulfillment' to service 'billing' (namespace collision check)")
 	if err := handleAdd(projectDir, "billing/fulfillment"); err != nil {
 		t.Fatalf("handleAdd for billing/fulfillment failed: %v", err)
 	}
@@ -114,7 +113,7 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 		t.Fatalf("cmd/migrate/main.go missing billing_fulfillment registration:\n%s", migrateMain)
 	}
 
-	t.Log("Step 6: Alice links local Sling platform")
+	t.Log("linking local Sling platform repository")
 	if err := linkProject(projectDir, slingRepoRoot); err != nil {
 		t.Fatalf("linkProject failed: %v", err)
 	}
@@ -122,7 +121,7 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 	assertFileExists(t, filepath.Join(projectDir, "deployment", "docker-compose.override.yaml"))
 	assertFileExists(t, filepath.Join(projectDir, "deployment", "go.work.docker"))
 
-	t.Log("Step 7: Alice adds third service 'notifications' while workspace is linked")
+	t.Log("adding service 'notifications' while workspace is linked")
 	if err := handleAdd(projectDir, "notifications"); err != nil {
 		t.Fatalf("handleAdd for notifications failed: %v", err)
 	}
@@ -136,7 +135,7 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 		t.Fatalf("docker-compose.override.yaml missing notifications service:\n%s", overrideContent)
 	}
 
-	t.Log("Step 8: Alice unlinks Sling platform")
+	t.Log("unlinking Sling platform")
 	if err := unlinkProject(projectDir); err != nil {
 		t.Fatalf("unlinkProject failed: %v", err)
 	}
@@ -144,7 +143,7 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 	assertFileNotExists(t, filepath.Join(projectDir, "deployment", "docker-compose.override.yaml"))
 	assertFileNotExists(t, filepath.Join(projectDir, "deployment", "go.work.docker"))
 
-	t.Log("Step 9: Alice runs go mod tidy and compiles all binaries")
+	t.Log("running go mod tidy and compiling all service binaries")
 	patchGoModReplace(t, projectDir, slingRepoRoot)
 	runGoModTidy(t, projectDir)
 
@@ -153,22 +152,20 @@ func TestUserStory_GoldenFlow(t *testing.T) {
 	runGoBuild(t, projectDir, "./cmd/notifications")
 	runGoBuild(t, projectDir, "./cmd/migrate")
 
-	t.Log("Step 10: Alice validates template leftovers across the entire project")
+	t.Log("validating template placeholder cleanup across generated project")
 	if err := validateLeftovers(projectDir); err != nil {
 		t.Fatalf("found template leftovers in generated project: %v", err)
 	}
-
-	t.Log("🌟 Golden Flow completed with 100% success!")
 }
 
-// TestUserStory_ChaosAndRecovery simulates the Sad Path / Chaos testing journey:
-// Bob makes mistakes with invalid names, attempts directory traversal, triggers duplicate collisions,
-// tries invalid link paths, and exercises platform concurrency and nil safety under -race.
-func TestUserStory_ChaosAndRecovery(t *testing.T) {
+// TestWorkflow_ValidationAndErrors verifies CLI validation and error handling:
+// invalid names, duplicate project/service initialization, path traversal prevention,
+// invalid link paths, idempotency of unlink, and concurrent ctxerr safety.
+func TestWorkflow_ValidationAndErrors(t *testing.T) {
 	tempDir := t.TempDir()
 	projectDir := filepath.Join(tempDir, "chaos_proj")
 
-	t.Log("Step 1: Bob passes invalid CLI project names")
+	t.Log("verifying rejection of invalid project names")
 	invalidNames := []string{"", "   ", "proj with spaces", "proj/with/slash", "proj!@#$"}
 	for _, badName := range invalidNames {
 		if err := validateName(badName, "project"); err == nil {
@@ -176,17 +173,17 @@ func TestUserStory_ChaosAndRecovery(t *testing.T) {
 		}
 	}
 
-	t.Log("Step 2: Bob initializes project successfully")
+	t.Log("initializing baseline project")
 	if err := initProject(projectDir, "auth"); err != nil {
 		t.Fatalf("initProject failed: %v", err)
 	}
 
-	t.Log("Step 3: Bob attempts duplicate project initialization in the same folder")
+	t.Log("verifying duplicate project creation failure")
 	if err := initProject(projectDir, "another"); err == nil {
 		t.Fatal("expected initProject to fail when project directory already exists, but it succeeded")
 	}
 
-	t.Log("Step 4: Bob attempts invalid handleAdd targets")
+	t.Log("verifying rejection of invalid service/subdomain targets")
 	badTargets := []string{
 		"",
 		"auth/sub/too/deep",
@@ -201,7 +198,7 @@ func TestUserStory_ChaosAndRecovery(t *testing.T) {
 		}
 	}
 
-	t.Log("Step 5: Bob attempts duplicate service and subdomain creation")
+	t.Log("verifying rejection of duplicate service and subdomain creation")
 	if err := handleAdd(projectDir, "auth"); err == nil {
 		t.Fatal("expected handleAdd('auth') to fail for existing service, but it succeeded")
 	}
@@ -213,7 +210,7 @@ func TestUserStory_ChaosAndRecovery(t *testing.T) {
 		t.Fatal("expected duplicate handleAdd('auth/oauth') to fail, but it succeeded")
 	}
 
-	t.Log("Step 6: Bob attempts invalid link operations")
+	t.Log("verifying rejection of invalid link target paths")
 	if err := linkProject(projectDir, filepath.Join(tempDir, "nonexistent_dir_12345")); err == nil {
 		t.Fatal("expected linkProject to nonexistent path to fail, but it succeeded")
 	}
@@ -221,12 +218,12 @@ func TestUserStory_ChaosAndRecovery(t *testing.T) {
 		t.Fatal("expected linkProject to non-sling directory to fail, but it succeeded")
 	}
 
-	t.Log("Step 7: Bob runs unlink on an unlinked project (idempotency check)")
+	t.Log("verifying unlink idempotency on unlinked project")
 	if err := unlinkProject(projectDir); err != nil {
 		t.Fatalf("unlinkProject failed on unlinked project: %v", err)
 	}
 
-	t.Log("Step 8: Bob stress-tests ctxerr concurrency under race conditions")
+	t.Log("testing concurrent ctxerr safety under race conditions")
 	ctx := ctxerr.WithSlot(context.Background())
 	var wg sync.WaitGroup
 	const workers = 100
@@ -235,7 +232,7 @@ func TestUserStory_ChaosAndRecovery(t *testing.T) {
 		workerID := i
 		go func() {
 			defer wg.Done()
-			ctxerr.SetErr(ctx, fmt.Errorf("chaos error %d", workerID))
+			ctxerr.SetErr(ctx, fmt.Errorf("error %d", workerID))
 		}()
 		go func() {
 			defer wg.Done()
@@ -243,8 +240,6 @@ func TestUserStory_ChaosAndRecovery(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-
-	t.Log("💥 Chaos & Recovery completed with 100% success!")
 }
 
 var (
@@ -252,7 +247,6 @@ var (
 	errInvalidTitle = errors.New("invalid item title")
 )
 
-// In-memory test repository implementing the template domain.Repository interface
 type inMemoryRepo struct {
 	mu    sync.RWMutex
 	items map[uuid.UUID]testItem
@@ -295,10 +289,9 @@ func (r *inMemoryRepo) Create(_ context.Context, item *testItem) error {
 	return nil
 }
 
-// TestUserStory_LiveHTTP_PerServiceAndDomain boots in-process HTTP servers and validates
-// /v1/items for each service (orders, billing) and domain (fulfillment) across Happy and Sad paths.
-func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
-	// Setup app configuration
+// TestWorkflow_LiveHTTPRouting boots in-process HTTP servers and validates /v1/items
+// across multiple services and subdomains, including error mapping, health probes, and metrics.
+func TestWorkflow_LiveHTTPRouting(t *testing.T) {
 	appCfg := app.Config{
 		ServiceName:     "orders-service",
 		ShutdownTimeout: 2 * time.Second,
@@ -320,7 +313,6 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		t.Fatalf("failed to create orders app: %v", err)
 	}
 
-	// Readiness probe mock
 	ordersDBReady := atomic.Bool{}
 	ordersDBReady.Store(true)
 	ordersApp.Attach("postgres", func(ctx context.Context) error {
@@ -330,7 +322,6 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		return nil
 	})
 
-	// Setup orders domain & fulfillment subdomain in-memory repositories
 	ordersRepo := newInMemoryRepo()
 	fulfillmentRepo := newInMemoryRepo()
 
@@ -339,7 +330,6 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		errInvalidTitle: http.StatusBadRequest,
 	}
 
-	// Router setup exactly matching template/service/cmd/main.go
 	r := ordersApp.DefaultRouter()
 
 	// 1. Orders Service Routes (/v1/items)
@@ -427,7 +417,6 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		})
 	})
 
-	// Start server on an ephemeral port
 	port := getFreePort(t)
 	ordersApp.ServeHTTP(fmt.Sprintf("127.0.0.1:%d", port), r)
 
@@ -444,22 +433,19 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 
 	client := &http.Client{Timeout: 2 * time.Second}
 
-	// -------------------------------------------------------------
-	// 🌟 HAPPY PATH: Orders Service & Fulfillment Subdomain
-	// -------------------------------------------------------------
-	t.Log("Happy Path: checking /healthz probe")
+	t.Log("checking /healthz probe")
 	resp, err := client.Get(baseURL + "/healthz")
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusOK)
 	assertEqual(t, readBody(t, resp), "ok\n")
 
-	t.Log("Happy Path: checking /readyz probe")
+	t.Log("checking /readyz probe")
 	resp, err = client.Get(baseURL + "/readyz")
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusOK)
 	assertEqual(t, readBody(t, resp), "ready\n")
 
-	t.Log("Happy Path: POST /v1/items on Orders service")
+	t.Log("testing POST /v1/items on orders service")
 	postReqBody, _ := json.Marshal(map[string]string{"title": "Order Alpha"})
 	resp, err = client.Post(baseURL+"/v1/items", "application/json", bytes.NewReader(postReqBody))
 	assertNoError(t, err)
@@ -472,7 +458,7 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 	}
 	assertEqual(t, createdOrder.Title, "Order Alpha")
 
-	t.Log("Happy Path: GET /v1/items/{id} on Orders service")
+	t.Log("testing GET /v1/items/{id} on orders service")
 	resp, err = client.Get(fmt.Sprintf("%s/v1/items/%s", baseURL, createdOrder.ID.String()))
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusOK)
@@ -481,7 +467,7 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 	assertEqual(t, fetchedOrder.ID, createdOrder.ID)
 	assertEqual(t, fetchedOrder.Title, "Order Alpha")
 
-	t.Log("Happy Path: GET /v1/items list on Orders service")
+	t.Log("testing GET /v1/items list on orders service")
 	resp, err = client.Get(baseURL + "/v1/items")
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusOK)
@@ -491,7 +477,7 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		t.Fatalf("expected 1 order in list, got %d", len(ordersList))
 	}
 
-	t.Log("Happy Path: POST /v1/fulfillment/items on Fulfillment subdomain")
+	t.Log("testing POST /v1/fulfillment/items on fulfillment subdomain")
 	postSubBody, _ := json.Marshal(map[string]string{"title": "Shipment Package #1"})
 	resp, err = client.Post(baseURL+"/v1/fulfillment/items", "application/json", bytes.NewReader(postSubBody))
 	assertNoError(t, err)
@@ -501,12 +487,12 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 	_ = json.Unmarshal([]byte(readBody(t, resp)), &createdShipment)
 	assertEqual(t, createdShipment.Title, "Shipment Package #1")
 
-	t.Log("Happy Path: GET /v1/fulfillment/items/{id} on Fulfillment subdomain")
+	t.Log("testing GET /v1/fulfillment/items/{id} on fulfillment subdomain")
 	resp, err = client.Get(fmt.Sprintf("%s/v1/fulfillment/items/%s", baseURL, createdShipment.ID.String()))
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusOK)
 
-	t.Log("Happy Path: GET /metrics contains Prometheus metrics")
+	t.Log("verifying Prometheus /metrics endpoint")
 	resp, err = client.Get(baseURL + "/metrics")
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusOK)
@@ -515,10 +501,7 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		t.Fatalf("metrics body does not contain http_server_requests_total:\n%s", metricsBody)
 	}
 
-	// -------------------------------------------------------------
-	// 🌟 BILLING SERVICE: Independent Service /v1/items verification
-	// -------------------------------------------------------------
-	t.Log("Happy Path: Testing independent Billing Service /v1/items")
+	t.Log("testing independent billing service /v1/items and data isolation")
 	billingAppCfg := app.Config{
 		ServiceName:     "billing-service",
 		ShutdownTimeout: 2 * time.Second,
@@ -617,10 +600,7 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		t.Fatal("billing app failed to shutdown within timeout")
 	}
 
-	// -------------------------------------------------------------
-	// 💥 SAD PATH: Orders Service & Fulfillment Subdomain
-	// -------------------------------------------------------------
-	t.Log("Sad Path: POST /v1/items with empty title returns 400 Bad Request")
+	t.Log("testing POST /v1/items with empty title (expecting 400 Bad Request)")
 	emptyTitleBody, _ := json.Marshal(map[string]string{"title": ""})
 	resp, err = client.Post(baseURL+"/v1/items", "application/json", bytes.NewReader(emptyTitleBody))
 	assertNoError(t, err)
@@ -629,19 +609,19 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		t.Fatal("expected error message 'invalid item title' in 400 response")
 	}
 
-	t.Log("Sad Path: POST /v1/items with malformed JSON returns 400 Bad Request")
+	t.Log("testing POST /v1/items with malformed JSON (expecting 400 Bad Request)")
 	resp, err = client.Post(baseURL+"/v1/items", "application/json", strings.NewReader(`{"title": broken json`))
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusBadRequest)
 	_ = readBody(t, resp)
 
-	t.Log("Sad Path: GET /v1/items/not-a-uuid returns 400 Bad Request")
+	t.Log("testing GET /v1/items/not-a-uuid (expecting 400 Bad Request)")
 	resp, err = client.Get(baseURL + "/v1/items/not-a-uuid")
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusBadRequest)
 	_ = readBody(t, resp)
 
-	t.Log("Sad Path: GET /v1/items/{nonexistent_id} returns 404 Not Found")
+	t.Log("testing GET /v1/items/{nonexistent_id} (expecting 404 Not Found)")
 	nonExistentID := uuid.NewV7()
 	resp, err = client.Get(fmt.Sprintf("%s/v1/items/%s", baseURL, nonExistentID.String()))
 	assertNoError(t, err)
@@ -650,13 +630,13 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 		t.Fatal("expected error message 'item not found' in 404 response")
 	}
 
-	t.Log("Sad Path: GET /unknown-route returns 404 Not Found")
+	t.Log("testing GET /unknown-route (expecting 404 Not Found)")
 	resp, err = client.Get(baseURL + "/random-unregistered-route")
 	assertNoError(t, err)
 	assertEqual(t, resp.StatusCode, http.StatusNotFound)
 	_ = readBody(t, resp)
 
-	t.Log("Sad Path: /readyz probe returns 503 when dependency fails")
+	t.Log("testing /readyz probe failure when dependency is unhealthy")
 	ordersDBReady.Store(false)
 	resp, err = client.Get(baseURL + "/readyz")
 	assertNoError(t, err)
@@ -671,11 +651,8 @@ func TestUserStory_LiveHTTP_PerServiceAndDomain(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("app failed to shutdown within timeout")
 	}
-
-	t.Log("✅ Live HTTP Runtime E2E verification completed with 100% success!")
 }
 
-// Helpers needed for tests
 func getFreePort(t *testing.T) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")

@@ -46,7 +46,7 @@ These modules are **implemented, tested, and included in the platform repository
 ### Cache and State (`platform/redis`)
 * **Under the Hood:** Built on `go-redis/v9` with method embedding, hardware command tracing via `redisotel`, pool metrics (`PoolStats`) exported to Prometheus, and connectivity verification on startup.
 * **How to Enable in a Service:**
-  1. In `docker-compose.yaml`, uncomment or enable `redis:8-alpine`.
+  1. In `docker-compose.yaml`, uncomment or enable `valkey`.
   2. In `internal/<service>/config.go`: add `Redis redis.Config toml:"redis"`.
   3. In `cmd/<service>/main.go`:
      ```go
