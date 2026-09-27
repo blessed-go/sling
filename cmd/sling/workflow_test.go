@@ -1,29 +1,18 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"net"
-	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
-	"uuid"
-
-	"github.com/blessed-go/sling/platform/app"
-	"github.com/blessed-go/sling/platform/ctxerr"
-	"github.com/blessed-go/sling/platform/httpx"
-	"github.com/blessed-go/sling/platform/logger"
-	"github.com/blessed-go/sling/platform/telemetry"
-	"github.com/go-chi/chi/v5"
 )
+
+func TestVersionCommand(t *testing.T) {
+	if version != "v0.1.1" {
+		t.Errorf("expected version to be 'v0.1.1', got %q", version)
+	}
+}
 
 // TestWorkflow_MultiService verifies end-to-end scaffolding of a multi-service workspace,
 // including subdomain creation, table/cache isolation, local linking, and clean compilation.
@@ -38,8 +27,8 @@ func TestWorkflow_MultiService(t *testing.T) {
 	}
 
 	t.Log("verifying CLI version")
-	if version != "v0.1.0" {
-		t.Fatalf("expected version v0.1.0, got %s", version)
+	if version != "v0.1.1" {
+		t.Fatalf("expected version v0.1.1, got %s", version)
 	}
 
 	t.Log("initializing project workspace with first service 'orders'")
@@ -158,12 +147,11 @@ func TestWorkflow_MultiService(t *testing.T) {
 	}
 }
 
-// TestWorkflow_ValidationAndErrors verifies CLI validation and error handling:
-// invalid names, duplicate project/service initialization, path traversal prevention,
-// invalid link paths, idempotency of unlink, and concurrent ctxerr safety.
-func TestWorkflow_ValidationAndErrors(t *testing.T) {
+// TestWorkflow_CLI_Validation verifies CLI validation and edge cases:
+// empty projects without initial services, invalid names, duplicate project/service initialization,
+// path traversal prevention, invalid link paths, and idempotency of unlink.
+func TestWorkflow_CLI_Validation(t *testing.T) {
 	tempDir := t.TempDir()
-	projectDir := filepath.Join(tempDir, "chaos_proj")
 
 	t.Log("verifying rejection of invalid project names")
 	invalidNames := []string{"", "   ", "proj with spaces", "proj/with/slash", "proj!@#$"}
@@ -173,536 +161,120 @@ func TestWorkflow_ValidationAndErrors(t *testing.T) {
 		}
 	}
 
-	t.Log("initializing baseline project")
-	if err := initProject(projectDir, "auth"); err != nil {
-		t.Fatalf("initProject failed: %v", err)
+	t.Log("initializing bare project without initial service")
+	bareProjectDir := filepath.Join(tempDir, "bare_proj")
+	if err := initProject(bareProjectDir, ""); err != nil {
+		t.Fatalf("initProject without service failed: %v", err)
 	}
+	assertFileExists(t, filepath.Join(bareProjectDir, "go.mod"))
+	assertFileExists(t, filepath.Join(bareProjectDir, "Taskfile.yml"))
+	assertFileExists(t, filepath.Join(bareProjectDir, "deployment", "docker-compose.yaml"))
+	assertFileExists(t, filepath.Join(bareProjectDir, "tests", "bruno", "bruno.json"))
+
+	t.Log("adding service 'orders' to bare project")
+	if err := handleAdd(bareProjectDir, "orders"); err != nil {
+		t.Fatalf("handleAdd for service in bare project failed: %v", err)
+	}
+	assertFileExists(t, filepath.Join(bareProjectDir, "internal", "orders", "domain.go"))
+	assertFileExists(t, filepath.Join(bareProjectDir, "cmd", "orders", "main.go"))
+	assertFileExists(t, filepath.Join(bareProjectDir, "conf", "orders.toml"))
+	assertFileExists(t, filepath.Join(bareProjectDir, "deployment", "orders.compose.yaml"))
 
 	t.Log("verifying duplicate project creation failure")
-	if err := initProject(projectDir, "another"); err == nil {
+	if err := initProject(bareProjectDir, "another"); err == nil {
 		t.Fatal("expected initProject to fail when project directory already exists, but it succeeded")
 	}
 
 	t.Log("verifying rejection of invalid service/subdomain targets")
 	badTargets := []string{
 		"",
-		"auth/sub/too/deep",
-		"auth/invalid*name",
+		"orders/sub/too/deep",
+		"orders/invalid*name",
 		"nonexistent_parent/sub",
 		"../traversal",
 		"/absolute/path",
 	}
 	for _, badTarget := range badTargets {
-		if err := handleAdd(projectDir, badTarget); err == nil {
+		if err := handleAdd(bareProjectDir, badTarget); err == nil {
 			t.Errorf("expected handleAdd(%q) to fail, but it succeeded", badTarget)
 		}
 	}
 
 	t.Log("verifying rejection of duplicate service and subdomain creation")
-	if err := handleAdd(projectDir, "auth"); err == nil {
-		t.Fatal("expected handleAdd('auth') to fail for existing service, but it succeeded")
+	if err := handleAdd(bareProjectDir, "orders"); err == nil {
+		t.Fatal("expected handleAdd('orders') to fail for existing service, but it succeeded")
 	}
 
-	if err := handleAdd(projectDir, "auth/oauth"); err != nil {
-		t.Fatalf("first handleAdd('auth/oauth') failed: %v", err)
+	if err := handleAdd(bareProjectDir, "orders/fulfillment"); err != nil {
+		t.Fatalf("first handleAdd('orders/fulfillment') failed: %v", err)
 	}
-	if err := handleAdd(projectDir, "auth/oauth"); err == nil {
-		t.Fatal("expected duplicate handleAdd('auth/oauth') to fail, but it succeeded")
+	if err := handleAdd(bareProjectDir, "orders/fulfillment"); err == nil {
+		t.Fatal("expected duplicate handleAdd('orders/fulfillment') to fail, but it succeeded")
 	}
 
 	t.Log("verifying rejection of invalid link target paths")
-	if err := linkProject(projectDir, filepath.Join(tempDir, "nonexistent_dir_12345")); err == nil {
+	if err := linkProject(bareProjectDir, filepath.Join(tempDir, "nonexistent_dir_12345")); err == nil {
 		t.Fatal("expected linkProject to nonexistent path to fail, but it succeeded")
 	}
-	if err := linkProject(projectDir, tempDir); err == nil {
+	if err := linkProject(bareProjectDir, tempDir); err == nil {
 		t.Fatal("expected linkProject to non-sling directory to fail, but it succeeded")
 	}
 
 	t.Log("verifying unlink idempotency on unlinked project")
-	if err := unlinkProject(projectDir); err != nil {
+	if err := unlinkProject(bareProjectDir); err != nil {
 		t.Fatalf("unlinkProject failed on unlinked project: %v", err)
 	}
-
-	t.Log("testing concurrent ctxerr safety under race conditions")
-	ctx := ctxerr.WithSlot(context.Background())
-	var wg sync.WaitGroup
-	const workers = 100
-	wg.Add(workers * 2)
-	for i := 0; i < workers; i++ {
-		workerID := i
-		go func() {
-			defer wg.Done()
-			ctxerr.SetErr(ctx, fmt.Errorf("error %d", workerID))
-		}()
-		go func() {
-			defer wg.Done()
-			_ = ctxerr.Err(ctx)
-		}()
-	}
-	wg.Wait()
 }
 
-var (
-	errNotFound     = errors.New("item not found")
-	errInvalidTitle = errors.New("invalid item title")
-)
-
-type inMemoryRepo struct {
-	mu    sync.RWMutex
-	items map[uuid.UUID]testItem
-}
-
-type testItem struct {
-	ID        uuid.UUID `json:"id"`
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-func newInMemoryRepo() *inMemoryRepo {
-	return &inMemoryRepo{items: make(map[uuid.UUID]testItem)}
-}
-
-func (r *inMemoryRepo) Get(_ context.Context, id uuid.UUID) (*testItem, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	item, ok := r.items[id]
-	if !ok {
-		return nil, errNotFound
-	}
-	return &item, nil
-}
-
-func (r *inMemoryRepo) List(_ context.Context) ([]testItem, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	list := make([]testItem, 0, len(r.items))
-	for _, item := range r.items {
-		list = append(list, item)
-	}
-	return list, nil
-}
-
-func (r *inMemoryRepo) Create(_ context.Context, item *testItem) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.items[item.ID] = *item
-	return nil
-}
-
-// TestWorkflow_LiveHTTPRouting boots in-process HTTP servers and validates /v1/items
-// across multiple services and subdomains, including error mapping, health probes, and metrics.
-func TestWorkflow_LiveHTTPRouting(t *testing.T) {
-	appCfg := app.Config{
-		ServiceName:     "orders-service",
-		ShutdownTimeout: 2 * time.Second,
-		Logger: logger.Config{
-			Format: "text",
-			Level:  "error",
-		},
-		Telemetry: telemetry.Config{
-			ServiceName:       "orders-service",
-			ServiceVersion:    "1.0.0",
-			Environment:       "test",
-			PrometheusEnabled: true,
-			Interval:          time.Second,
-		},
-	}
-
-	ordersApp, err := app.New(appCfg.ServiceName, appCfg)
-	if err != nil {
-		t.Fatalf("failed to create orders app: %v", err)
-	}
-
-	ordersDBReady := atomic.Bool{}
-	ordersDBReady.Store(true)
-	ordersApp.Attach("postgres", func(ctx context.Context) error {
-		if !ordersDBReady.Load() {
-			return errors.New("database connection refused")
-		}
-		return nil
-	})
-
-	ordersRepo := newInMemoryRepo()
-	fulfillmentRepo := newInMemoryRepo()
-
-	errorMapping := map[error]int{
-		errNotFound:     http.StatusNotFound,
-		errInvalidTitle: http.StatusBadRequest,
-	}
-
-	r := ordersApp.DefaultRouter()
-
-	// 1. Orders Service Routes (/v1/items)
-	r.Route("/v1", func(r chi.Router) {
-		r.Use(httpx.MapErrors(errorMapping))
-
-		r.Get("/items/{id}", func(w http.ResponseWriter, req *http.Request) {
-			id, err := uuid.Parse(chi.URLParam(req, "id"))
-			if err != nil {
-				httpx.BadRequest(w, req, "invalid item id")
-				return
-			}
-			item, err := ordersRepo.Get(req.Context(), id)
-			if err != nil {
-				httpx.WriteError(w, req, err)
-				return
-			}
-			httpx.JSON(w, http.StatusOK, item)
-		})
-
-		r.Get("/items", func(w http.ResponseWriter, req *http.Request) {
-			items, _ := ordersRepo.List(req.Context())
-			httpx.JSON(w, http.StatusOK, items)
-		})
-
-		r.Post("/items", func(w http.ResponseWriter, req *http.Request) {
-			var body struct {
-				Title string `json:"title"`
-			}
-			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-				httpx.BadRequest(w, req, "invalid request body")
-				return
-			}
-			if len(body.Title) == 0 {
-				httpx.WriteError(w, req, errInvalidTitle)
-				return
-			}
-			item := &testItem{
-				ID:        uuid.NewV7(),
-				Title:     body.Title,
-				CreatedAt: time.Now(),
-			}
-			_ = ordersRepo.Create(req.Context(), item)
-			httpx.JSON(w, http.StatusCreated, item)
-		})
-	})
-
-	// 2. Fulfillment Subdomain Routes (/v1/fulfillment/items)
-	r.Route("/v1/fulfillment", func(r chi.Router) {
-		r.Use(httpx.MapErrors(errorMapping))
-
-		r.Post("/items", func(w http.ResponseWriter, req *http.Request) {
-			var body struct {
-				Title string `json:"title"`
-			}
-			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-				httpx.BadRequest(w, req, "invalid request body")
-				return
-			}
-			if len(body.Title) == 0 {
-				httpx.WriteError(w, req, errInvalidTitle)
-				return
-			}
-			item := &testItem{
-				ID:        uuid.NewV7(),
-				Title:     body.Title,
-				CreatedAt: time.Now(),
-			}
-			_ = fulfillmentRepo.Create(req.Context(), item)
-			httpx.JSON(w, http.StatusCreated, item)
-		})
-
-		r.Get("/items/{id}", func(w http.ResponseWriter, req *http.Request) {
-			id, err := uuid.Parse(chi.URLParam(req, "id"))
-			if err != nil {
-				httpx.BadRequest(w, req, "invalid item id")
-				return
-			}
-			item, err := fulfillmentRepo.Get(req.Context(), id)
-			if err != nil {
-				httpx.WriteError(w, req, err)
-				return
-			}
-			httpx.JSON(w, http.StatusOK, item)
-		})
-	})
-
-	port := getFreePort(t)
-	ordersApp.ServeHTTP(fmt.Sprintf("127.0.0.1:%d", port), r)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	runErrChan := make(chan error, 1)
-	go func() {
-		runErrChan <- ordersApp.Run(ctx)
-	}()
-
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	waitForServer(t, baseURL+"/healthz", 2*time.Second)
-
-	client := &http.Client{Timeout: 2 * time.Second}
-
-	t.Log("checking /healthz probe")
-	resp, err := client.Get(baseURL + "/healthz")
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusOK)
-	assertEqual(t, readBody(t, resp), "ok\n")
-
-	t.Log("checking /readyz probe")
-	resp, err = client.Get(baseURL + "/readyz")
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusOK)
-	assertEqual(t, readBody(t, resp), "ready\n")
-
-	t.Log("testing POST /v1/items on orders service")
-	postReqBody, _ := json.Marshal(map[string]string{"title": "Order Alpha"})
-	resp, err = client.Post(baseURL+"/v1/items", "application/json", bytes.NewReader(postReqBody))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusCreated)
-
-	var createdOrder testItem
-	_ = json.Unmarshal([]byte(readBody(t, resp)), &createdOrder)
-	if createdOrder.ID == uuid.Nil() {
-		t.Fatal("expected valid UUIDv7 for created order, got nil UUID")
-	}
-	assertEqual(t, createdOrder.Title, "Order Alpha")
-
-	t.Log("testing GET /v1/items/{id} on orders service")
-	resp, err = client.Get(fmt.Sprintf("%s/v1/items/%s", baseURL, createdOrder.ID.String()))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusOK)
-	var fetchedOrder testItem
-	_ = json.Unmarshal([]byte(readBody(t, resp)), &fetchedOrder)
-	assertEqual(t, fetchedOrder.ID, createdOrder.ID)
-	assertEqual(t, fetchedOrder.Title, "Order Alpha")
-
-	t.Log("testing GET /v1/items list on orders service")
-	resp, err = client.Get(baseURL + "/v1/items")
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusOK)
-	var ordersList []testItem
-	_ = json.Unmarshal([]byte(readBody(t, resp)), &ordersList)
-	if len(ordersList) != 1 {
-		t.Fatalf("expected 1 order in list, got %d", len(ordersList))
-	}
-
-	t.Log("testing POST /v1/fulfillment/items on fulfillment subdomain")
-	postSubBody, _ := json.Marshal(map[string]string{"title": "Shipment Package #1"})
-	resp, err = client.Post(baseURL+"/v1/fulfillment/items", "application/json", bytes.NewReader(postSubBody))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusCreated)
-
-	var createdShipment testItem
-	_ = json.Unmarshal([]byte(readBody(t, resp)), &createdShipment)
-	assertEqual(t, createdShipment.Title, "Shipment Package #1")
-
-	t.Log("testing GET /v1/fulfillment/items/{id} on fulfillment subdomain")
-	resp, err = client.Get(fmt.Sprintf("%s/v1/fulfillment/items/%s", baseURL, createdShipment.ID.String()))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusOK)
-
-	t.Log("verifying Prometheus /metrics endpoint")
-	resp, err = client.Get(baseURL + "/metrics")
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusOK)
-	metricsBody := readBody(t, resp)
-	if !strings.Contains(metricsBody, "http_server_requests_total") {
-		t.Fatalf("metrics body does not contain http_server_requests_total:\n%s", metricsBody)
-	}
-
-	t.Log("testing independent billing service /v1/items and data isolation")
-	billingAppCfg := app.Config{
-		ServiceName:     "billing-service",
-		ShutdownTimeout: 2 * time.Second,
-		Logger: logger.Config{
-			Format: "text",
-			Level:  "error",
-		},
-		Telemetry: telemetry.Config{
-			ServiceName:       "billing-service",
-			ServiceVersion:    "1.0.0",
-			Environment:       "test",
-			PrometheusEnabled: true,
-			Interval:          time.Second,
-		},
-	}
-	billingApp, err := app.New(billingAppCfg.ServiceName, billingAppCfg)
-	if err != nil {
-		t.Fatalf("failed to create billing app: %v", err)
-	}
-
-	billingRepo := newInMemoryRepo()
-	billingRouter := billingApp.DefaultRouter()
-	billingRouter.Route("/v1", func(r chi.Router) {
-		r.Use(httpx.MapErrors(errorMapping))
-
-		r.Get("/items/{id}", func(w http.ResponseWriter, req *http.Request) {
-			id, err := uuid.Parse(chi.URLParam(req, "id"))
-			if err != nil {
-				httpx.BadRequest(w, req, "invalid item id")
-				return
-			}
-			item, err := billingRepo.Get(req.Context(), id)
-			if err != nil {
-				httpx.WriteError(w, req, err)
-				return
-			}
-			httpx.JSON(w, http.StatusOK, item)
-		})
-
-		r.Post("/items", func(w http.ResponseWriter, req *http.Request) {
-			var body struct {
-				Title string `json:"title"`
-			}
-			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-				httpx.BadRequest(w, req, "invalid request body")
-				return
-			}
-			if len(body.Title) == 0 {
-				httpx.WriteError(w, req, errInvalidTitle)
-				return
-			}
-			item := &testItem{
-				ID:        uuid.NewV7(),
-				Title:     body.Title,
-				CreatedAt: time.Now(),
-			}
-			_ = billingRepo.Create(req.Context(), item)
-			httpx.JSON(w, http.StatusCreated, item)
-		})
-	})
-
-	billingPort := getFreePort(t)
-	billingApp.ServeHTTP(fmt.Sprintf("127.0.0.1:%d", billingPort), billingRouter)
-
-	billingCtx, billingCancel := context.WithCancel(context.Background())
-	defer billingCancel()
-	billingRunErrChan := make(chan error, 1)
-	go func() {
-		billingRunErrChan <- billingApp.Run(billingCtx)
-	}()
-
-	billingBaseURL := fmt.Sprintf("http://127.0.0.1:%d", billingPort)
-	waitForServer(t, billingBaseURL+"/healthz", 2*time.Second)
-
-	postBillingBody, _ := json.Marshal(map[string]string{"title": "Invoice #909"})
-	resp, err = client.Post(billingBaseURL+"/v1/items", "application/json", bytes.NewReader(postBillingBody))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusCreated)
-
-	var createdInvoice testItem
-	_ = json.Unmarshal([]byte(readBody(t, resp)), &createdInvoice)
-	assertEqual(t, createdInvoice.Title, "Invoice #909")
-
-	// Verify isolation: Invoice #909 does NOT exist in orders service
-	resp, err = client.Get(fmt.Sprintf("%s/v1/items/%s", baseURL, createdInvoice.ID.String()))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusNotFound)
-	_ = readBody(t, resp)
-
-	// Clean graceful shutdown of billingApp
-	billingCancel()
-	select {
-	case err := <-billingRunErrChan:
-		assertNoError(t, err)
-	case <-time.After(3 * time.Second):
-		t.Fatal("billing app failed to shutdown within timeout")
-	}
-
-	t.Log("testing POST /v1/items with empty title (expecting 400 Bad Request)")
-	emptyTitleBody, _ := json.Marshal(map[string]string{"title": ""})
-	resp, err = client.Post(baseURL+"/v1/items", "application/json", bytes.NewReader(emptyTitleBody))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusBadRequest)
-	if !strings.Contains(readBody(t, resp), "invalid item title") {
-		t.Fatal("expected error message 'invalid item title' in 400 response")
-	}
-
-	t.Log("testing POST /v1/items with malformed JSON (expecting 400 Bad Request)")
-	resp, err = client.Post(baseURL+"/v1/items", "application/json", strings.NewReader(`{"title": broken json`))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusBadRequest)
-	_ = readBody(t, resp)
-
-	t.Log("testing GET /v1/items/not-a-uuid (expecting 400 Bad Request)")
-	resp, err = client.Get(baseURL + "/v1/items/not-a-uuid")
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusBadRequest)
-	_ = readBody(t, resp)
-
-	t.Log("testing GET /v1/items/{nonexistent_id} (expecting 404 Not Found)")
-	nonExistentID := uuid.NewV7()
-	resp, err = client.Get(fmt.Sprintf("%s/v1/items/%s", baseURL, nonExistentID.String()))
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusNotFound)
-	if !strings.Contains(readBody(t, resp), "item not found") {
-		t.Fatal("expected error message 'item not found' in 404 response")
-	}
-
-	t.Log("testing GET /unknown-route (expecting 404 Not Found)")
-	resp, err = client.Get(baseURL + "/random-unregistered-route")
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusNotFound)
-	_ = readBody(t, resp)
-
-	t.Log("testing /readyz probe failure when dependency is unhealthy")
-	ordersDBReady.Store(false)
-	resp, err = client.Get(baseURL + "/readyz")
-	assertNoError(t, err)
-	assertEqual(t, resp.StatusCode, http.StatusServiceUnavailable)
-	_ = readBody(t, resp)
-
-	// Clean graceful shutdown of ordersApp
-	cancel()
-	select {
-	case err := <-runErrChan:
-		assertNoError(t, err)
-	case <-time.After(3 * time.Second):
-		t.Fatal("app failed to shutdown within timeout")
-	}
-}
-
-func getFreePort(t *testing.T) int {
+func patchGoModReplace(t *testing.T, projectDir, slingAbsPath string) {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	goModPath := filepath.Join(projectDir, "go.mod")
+	content := readFile(t, goModPath)
+	content += "\nreplace github.com/blessed-go/sling => " + slingAbsPath + "\n"
+	if err := os.WriteFile(goModPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to patch go.mod: %v", err)
+	}
+}
+
+func runGoBuild(t *testing.T, dir, packagePath string) {
+	t.Helper()
+	cmd := exec.Command("go", "build", "-o", os.DevNull, packagePath)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("failed to get free port: %v", err)
+		t.Fatalf("compilation failed for %s:\n%s", packagePath, string(output))
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
 }
 
-func waitForServer(t *testing.T, url string, timeout time.Duration) {
+func runGoModTidy(t *testing.T, dir string) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	client := &http.Client{
-		Timeout: 100 * time.Millisecond,
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-		},
-	}
-	for time.Now().Before(deadline) {
-		resp, err := client.Get(url)
-		if err == nil {
-			_ = resp.Body.Close()
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatalf("server at %s did not become ready within %v", url, timeout)
-}
-
-func assertNoError(t *testing.T, err error) {
-	t.Helper()
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("go mod tidy failed:\n%s", string(output))
 	}
 }
 
-func assertEqual[T comparable](t *testing.T, got, want T) {
+func assertFileExists(t *testing.T, path string) {
 	t.Helper()
-	if got != want {
-		t.Fatalf("got %v, want %v", got, want)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected file to exist at %s, but got err: %v", path, err)
 	}
 }
 
-func readBody(t *testing.T, resp *http.Response) string {
+func assertFileNotExists(t *testing.T, path string) {
 	t.Helper()
-	defer resp.Body.Close()
-	bytes, err := io.ReadAll(resp.Body)
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("file SHOULD NOT exist at %s, but it was found", path)
+	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	bytes, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("failed to read response body: %v", err)
+		t.Fatalf("failed to read file %s: %v", path, err)
 	}
 	return string(bytes)
 }

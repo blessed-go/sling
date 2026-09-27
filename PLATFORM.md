@@ -1,4 +1,4 @@
-# SLING PLATFORM: CAPABILITIES, BATTERIES & ROADMAP (v0.1.0)
+# SLING PLATFORM: CAPABILITIES, BATTERIES & ROADMAP
 
 > **Sling** is a lightweight platform chassis (SDK & Starter Kit) written in Go.  
 > Philosophy: **"Zero magic, explicit Go-way dependencies, zero overhead, and full infrastructure plumbing out of the box."**
@@ -95,7 +95,7 @@ These modules are **implemented, tested, and included in the platform repository
 
 ---
 
-## 4. Platform Architecture Roadmap (v0.1.0 -> v0.2.0)
+## 4. Platform Architecture Roadmap (v0.1.x -> v0.2.0)
 
 This section outlines the architectural backlog:
 

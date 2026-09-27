@@ -16,7 +16,7 @@ const baseModulePath = "github.com/blessed-go/sling/template"
 
 var leftoverRegex = regexp.MustCompile(`__[A-Z0-9_]+__`)
 
-const version = "v0.1.0"
+const version = "v0.1.1"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -542,11 +542,11 @@ func initProject(targetDir, firstService string) error {
 go 1.27
 
 require (
-	github.com/blessed-go/sling v0.1.0
+	github.com/blessed-go/sling %s
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/jackc/pgx/v5 v5.11.0
 )
-`, moduleName)
+`, moduleName, version)
 
 	if err := os.WriteFile(filepath.Join(targetDir, "go.mod"), []byte(goModContent), 0644); err != nil {
 		return fmt.Errorf("writing go.mod: %w", err)
