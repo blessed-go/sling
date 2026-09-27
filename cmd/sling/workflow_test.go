@@ -83,11 +83,11 @@ func TestWorkflow_MultiService(t *testing.T) {
 	}
 
 	ordersCompose := readFile(t, filepath.Join(projectDir, "deployment", "orders.compose.yaml"))
-	if !strings.Contains(ordersCompose, "2345:2345") {
+	if !strings.Contains(ordersCompose, ":-2345}:2345") {
 		t.Fatalf("orders.compose.yaml missing delve port 2345:\n%s", ordersCompose)
 	}
 	billingCompose := readFile(t, filepath.Join(projectDir, "deployment", "billing.compose.yaml"))
-	if !strings.Contains(billingCompose, "2346:2345") {
+	if !strings.Contains(billingCompose, ":-2346}:2345") {
 		t.Fatalf("billing.compose.yaml missing delve port 2346:\n%s", billingCompose)
 	}
 
