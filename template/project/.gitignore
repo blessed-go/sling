@@ -1,0 +1,60 @@
+# Binaries and build output
+bin/
+tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+__debug_bin*
+
+# Test artifacts and coverage
+*.test
+*.out
+coverage.*
+profile.*
+
+# Dependencies
+vendor/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+conf/*.local.toml
+conf/*.secret.toml
+conf/*.example
+conf/*.example.*
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# OS metadata
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# Local Go workspace
+go.work
+go.work.*
+deployment/go.work.*
+
+
+# Local Docker Compose overrides
+docker-compose.override.yaml
+docker-compose.override.yml
+deployment/docker-compose.override.yaml
+deployment/docker-compose.override.yml
+
+# Local runtime storage and databases
+.data/
+local_storage/
+pgdata/

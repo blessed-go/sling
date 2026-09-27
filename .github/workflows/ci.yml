@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Verify Go Vet
+        run: go vet ./...
+
+      - name: Run Tests
+        run: go test -v -race -count=1 ./...
+
+      - name: Run E2E Docker Tests
+        run: go test -v -tags e2e -count=1 ./test/e2e/...
+
+      - name: Build Sling CLI
+        run: go build -v -o /dev/null ./cmd/sling

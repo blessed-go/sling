@@ -1,0 +1,34 @@
+:80 {
+    log {
+        output stdout
+        format json
+    }
+
+    @api path_regexp api ^/api/([^/]+)(/.*)?$
+    handle @api {
+        @cors_preflight method OPTIONS
+        handle @cors_preflight {
+            header Access-Control-Allow-Origin "*"
+            header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            header Access-Control-Allow-Headers "Authorization, Content-Type, traceparent, baggage"
+            header Access-Control-Max-Age "3600"
+            respond "" 204
+        }
+
+        header Access-Control-Allow-Origin "*"
+        header Access-Control-Allow-Headers "Authorization, Content-Type, traceparent, baggage"
+
+        uri strip_prefix /api/{re.api.1}
+        @empty path ""
+        rewrite @empty /
+        reverse_proxy {re.api.1}:8080 {
+            transport http {
+                dial_timeout 1s
+            }
+        }
+    }
+
+    handle {
+        respond "Service Not Found" 404
+    }
+}

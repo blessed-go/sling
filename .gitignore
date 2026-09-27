@@ -1,0 +1,43 @@
+# Binaries and build output
+bin/
+tmp/
+/sling
+*.exe
+
+*.exe~
+*.dll
+*.so
+*.dylib
+__debug_bin*
+
+# Test artifacts and coverage
+*.test
+*.out
+coverage.*
+profile.*
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# OS metadata
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# Go workspace
+go.work
+go.work.sum
+

@@ -1,0 +1,12 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -buildvcs=false -o ./tmp/${SERVICE_NAME}_binary ./cmd/$SERVICE_NAME/main.go"
+entrypoint = "./tmp/${SERVICE_NAME}_binary"
+full_bin = "dlv exec ./tmp/${SERVICE_NAME}_binary --listen=:2345 --headless=true --api-version=2 --accept-multiclient --continue"
+
+include_dir = ["cmd", "internal"]
+exclude_dir = ["tmp", "vendor"]
+include_ext = ["go", "toml"]
+delay = 1000

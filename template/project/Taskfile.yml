@@ -1,0 +1,65 @@
+version: '3'
+
+vars:
+  PROJECT_NAME: "__PROJECT__"
+  COMPOSE_DIR: "deployment"
+  SLING_CLI: "{{.SLING_BIN | default \"sling\"}}"
+
+tasks:
+  up:
+    desc: "Start the full container stack"
+    cmds:
+      - docker compose --project-directory {{.COMPOSE_DIR}} up {{.CLI_ARGS | default ""}} --build -d
+
+  down:
+    desc: "Stop all containers"
+    cmds:
+      - docker compose --project-directory {{.COMPOSE_DIR}} down {{.CLI_ARGS | default ""}}
+
+  logs:
+    desc: "Stream all service logs in real time"
+    cmds:
+      - docker compose --project-directory {{.COMPOSE_DIR}} logs {{.CLI_ARGS | default ""}} -f
+
+  add:
+    desc: "Add a microservice or subdomain (e.g. task add -- billing OR task add -- billing/analytics)"
+    cmds:
+      - "{{.SLING_CLI}} add {{.CLI_ARGS}}"
+
+  new-service:
+    desc: "Alias for 'task add'"
+    cmds:
+      - "{{.SLING_CLI}} add {{.CLI_ARGS}}"
+
+  new-domain:
+    desc: "Alias for 'task add' (e.g. task new-domain -- billing/analytics)"
+    cmds:
+      - "{{.SLING_CLI}} add {{.CLI_ARGS}}"
+
+  link-sling:
+    desc: "Link local Sling repository for live development (e.g. task link-sling -- ../sling)"
+    cmds:
+      - "{{.SLING_CLI}} link {{.CLI_ARGS | default \"../sling\"}}"
+
+  unlink-sling:
+    desc: "Unlink local Sling repository and revert to published module"
+    cmds:
+      - "{{.SLING_CLI}} unlink"
+
+  tidy:
+    desc: "Tidy dependencies and sync workspace if linked"
+    cmds:
+      - go mod tidy
+      - if [ -f go.work ]; then go work sync; fi
+
+  test:e2e:
+    desc: "Run full end-to-end stack tests using Bruno CLI in Docker"
+    cmds:
+      - docker compose --project-directory {{.COMPOSE_DIR}} up -d --build --wait
+      - echo "running bruno e2e tests..."
+      - >
+        docker run --rm
+        --network {{.PROJECT_NAME}}_default
+        -v {{.TASKFILE_DIR}}/tests/bruno:/bruno
+        usebruno/cli:latest run /bruno -r --env local --env-var baseUrl=http://caddy
+      - docker compose --project-directory {{.COMPOSE_DIR}} down -v

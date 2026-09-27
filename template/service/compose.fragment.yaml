@@ -1,0 +1,57 @@
+# Service
+  __SERVICE__:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+      target: dev
+    user: "${UID:-0}:${GID:-0}"
+    working_dir: /app/__PROJECT__
+    labels:
+      - "sling.postgres.init=__SERVICE__"
+      - "prometheus.scrape=true"
+      - "prometheus.port=8080"
+      - "prometheus.service=__SERVICE__"
+    ports:
+      - "${__SERVICE_UPPER___DELVE_PORT:-__DELVE_PORT__}:2345"
+    tmpfs:
+      - /tmp:exec,mode=1777,size=512M
+    volumes:
+      - ../:/app/__PROJECT__
+      - go_pkg_cache:/go/pkg/mod
+      - go_build_cache:/tmp/go-cache
+    environment:
+      - PROJECT_NAME=__PROJECT__
+      - SERVICE_NAME=__SERVICE__
+      - CONFIG_PATH=conf/__SERVICE__.toml
+      - APP_ENV=local
+      - GOCACHE=/tmp/go-cache
+      - GOTMPDIR=/tmp
+      - TMPDIR=/tmp
+    depends_on:
+      __SERVICE__-migrator:
+        condition: service_completed_successfully
+
+  # Migrator
+  __SERVICE__-migrator:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+      target: dev
+    user: "${UID:-0}:${GID:-0}"
+    working_dir: /app/__PROJECT__
+    tmpfs:
+      - /tmp:exec,mode=1777,size=512M
+    volumes:
+      - ../:/app/__PROJECT__
+      - go_pkg_cache:/go/pkg/mod
+      - go_build_cache:/tmp/go-cache
+    environment:
+      - SERVICE=__SERVICE__
+      - POSTGRES_DSN=postgres://__SERVICE___user:__SERVICE___pass@postgres:5432/__SERVICE___db?sslmode=disable
+      - GOCACHE=/tmp/go-cache
+      - GOTMPDIR=/tmp
+      - TMPDIR=/tmp
+    command: ["go", "run", "-buildvcs=false", "./cmd/migrate"]
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully

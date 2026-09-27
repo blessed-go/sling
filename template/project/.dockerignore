@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Documentation and task runner
+README.md
+*.md
+Taskfile.yml
+
+# Binaries and local build caches
+bin/
+tmp/
+*.test
+*.out
+coverage.*
+
+# Test suites and developer collections
+tests/
+
+# Local secrets and environment overrides
+.env
+.env.*
+conf/*.local.toml
+conf/*.secret.toml
+
+# IDE and editor configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Host-level deployment and infrastructure configurations
+deployment/gateway/
+deployment/postgres/
+deployment/observability/
+
+# Go workspace files (used only in local development)
+go.work
+go.work.*
+deployment/go.work.*
+
+

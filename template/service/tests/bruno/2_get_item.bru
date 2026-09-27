@@ -1,0 +1,16 @@
+meta {
+  name: Get Item
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/__SERVICE__/v1/items/{{created_id}}
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{created_id}}
+  res.body.title: eq Smoke Test Room
+}

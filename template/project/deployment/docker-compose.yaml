@@ -1,0 +1,110 @@
+name: __PROJECT__
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: __PROJECT___db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+
+  postgres-init:
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./postgres/init-by-labels.sh:/init.sh:ro
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: postgres_password
+      POSTGRES_USER: postgres
+      POSTGRES_DB: __PROJECT___db
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-__PROJECT__}
+
+  redis:
+    image: valkey/valkey:9.1-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "valkey-cli", "ping" ]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    ports:
+      - "80:80"
+      - "127.0.0.1:2019:2019"
+    healthcheck:
+      test: [ "CMD", "caddy", "version" ]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+    volumes:
+      - ./gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+
+  jaeger:
+    image: jaegertracing/jaeger:2.21.0
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+
+  prometheus:
+    image: prom/prometheus:v3.12.0
+    user: "0:0"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  grafana:
+    image: grafana/grafana:12.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+
+  loki:
+    image: grafana/loki:3.7.8
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    user: "0:0"
+    volumes:
+      - ./observability/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+volumes:
+  pgdata:
+  go_pkg_cache:
+  go_build_cache:
+
