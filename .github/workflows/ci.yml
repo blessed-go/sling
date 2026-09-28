@@ -8,9 +8,8 @@ on:
 
 jobs:
   test:
-    name: Test & Build
+    name: Unit & Integration Tests
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgres:18-alpine
@@ -25,7 +24,6 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 5
-
       valkey:
         image: valkey/valkey:9.1-alpine
         ports:
@@ -37,26 +35,28 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
-
-      - name: Verify Go Vet
-        run: go vet ./...
-
-      - name: Run Tests
+      - run: go vet ./...
+      - name: Run Unit & Integration Tests
         env:
           POSTGRES_TEST_DSN: postgres://postgres:postgres_password@localhost:5432/postgres?sslmode=disable
           REDIS_TEST_ADDR: localhost:6379
         run: go test -v -race -count=1 ./...
 
-      - name: Run E2E Docker Tests
+  e2e:
+    name: E2E Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Run E2E Smoke Tests
         run: go test -v -tags e2e -count=1 ./test/e2e/...
-
       - name: Build Sling CLI
         run: go build -v -o /dev/null ./cmd/sling
