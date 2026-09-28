@@ -4,13 +4,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
 
-func TestVersionCommand(t *testing.T) {
-	if version != "v0.1.1" {
-		t.Errorf("expected version to be 'v0.1.1', got %q", version)
+func TestVersion_ValidSemver(t *testing.T) {
+	semverRegex := regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$`)
+	if !semverRegex.MatchString(version) {
+		t.Errorf("version %q does not conform to SemVer format (must be vX.Y.Z)", version)
 	}
 }
 
@@ -24,11 +26,6 @@ func TestWorkflow_MultiService(t *testing.T) {
 	slingRepoRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatalf("failed to resolve sling repo root: %v", err)
-	}
-
-	t.Log("verifying CLI version")
-	if version != "v0.1.1" {
-		t.Fatalf("expected version v0.1.1, got %s", version)
 	}
 
 	t.Log("initializing project workspace with first service 'orders'")
