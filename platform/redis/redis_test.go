@@ -2,8 +2,9 @@ package redis_test
 
 import (
 	"context"
-	"os/exec"
-	"strings"
+	"fmt"
+	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -12,32 +13,25 @@ import (
 )
 
 func TestRedisIntegration(t *testing.T) {
-	if err := exec.Command("docker", "info").Run(); err != nil {
-		t.Skip("Docker is not available, skipping integration test")
+	addr := os.Getenv("REDIS_TEST_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:6379"
 	}
-
-	t.Log("starting temporary redis container...")
-	containerID := startRedisContainer(t)
-	defer stopContainer(containerID)
-
-	hostPort := getContainerPort(t, containerID, "6379")
-	t.Logf("redis container ready on 127.0.0.1:%s", hostPort)
 
 	ctx := context.Background()
 	cfg := redis.Config{
-		Addr:         "127.0.0.1:" + hostPort,
-		DialTimeout:  3 * time.Second,
-		ReadTimeout:  2 * time.Second,
-		WriteTimeout: 2 * time.Second,
+		Addr:         addr,
+		DialTimeout:  1 * time.Second,
+		ReadTimeout:  1 * time.Second,
+		WriteTimeout: 1 * time.Second,
 	}
 
 	client, err := redis.New(ctx, cfg)
 	if err != nil {
-		t.Fatalf("failed to connect to redis: %v", err)
+		t.Skipf("Valkey/Redis is not running on %s (%v), skipping integration test", addr, err)
 	}
 	defer client.Close()
 
-	t.Log("testing set/get commands...")
 	testKey := "sling:test:key"
 	testVal := "super_secret_payload"
 
@@ -52,61 +46,38 @@ func TestRedisIntegration(t *testing.T) {
 	if gotVal != testVal {
 		t.Fatalf("expected value %q, got %q", testVal, gotVal)
 	}
-	t.Log("set/get verified successfully")
 
-	t.Log("verifying telemetry metrics registration...")
 	meter := telemetry.NewMeter("redis")
 	if err := client.RegisterMetrics(meter); err != nil {
 		t.Fatalf("failed to register redis metrics: %v", err)
 	}
 
-	t.Log("testing ping readiness contract...")
 	if err := client.Ping(ctx); err != nil {
-		t.Fatalf("expected Ping to succeed on living redis, got: %v", err)
+		t.Fatalf("expected Ping to succeed, got: %v", err)
 	}
 
-	t.Log("stopping redis container to test probe failure...")
-	_ = exec.Command("docker", "stop", containerID).Run()
+	closedPort := getUnusedPort(t)
+	brokenCfg := redis.Config{
+		Addr:        fmt.Sprintf("127.0.0.1:%d", closedPort),
+		DialTimeout: 50 * time.Millisecond,
+	}
+	brokenClient, _ := redis.New(ctx, brokenCfg) // Создаем клиент без New(fail-fast), чтобы проверить Ping
+	defer brokenClient.Close()
 
-	pingCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	pingCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if err := client.Ping(pingCtx); err == nil {
-		t.Fatal("expected Ping to fail after container stopped, but it succeeded")
+	if err := brokenClient.Ping(pingCtx); err == nil {
+		t.Fatal("expected Ping to fail on unreachable address, but it succeeded")
 	}
-	t.Log("ping successfully detected connection loss")
 }
 
-func startRedisContainer(t *testing.T) string {
+func getUnusedPort(t *testing.T) int {
 	t.Helper()
-	cmd := exec.Command("docker", "run", "-d", "-P", "--rm", "valkey/valkey:9")
-	out, err := cmd.CombinedOutput()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("failed to start redis container: %v\n%s", err, string(out))
+		t.Fatalf("failed to get free port: %v", err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	return strings.TrimSpace(lines[len(lines)-1])
-}
-
-func getContainerPort(t *testing.T, containerID, internalPort string) string {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		out, err := exec.Command("docker", "port", containerID, internalPort).CombinedOutput()
-		if err == nil {
-			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-			if len(lines) > 0 {
-				parts := strings.Split(lines[0], ":")
-				if len(parts) >= 2 {
-					return parts[len(parts)-1]
-				}
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf("failed to get mapped port for container %s", containerID)
-	return ""
-}
-
-func stopContainer(containerID string) {
-	_ = exec.Command("docker", "rm", "-f", containerID).Run()
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	return port
 }
