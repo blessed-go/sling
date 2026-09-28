@@ -441,11 +441,6 @@ func TestCustomerZeroSmoke(t *testing.T) {
 	})
 }
 
-// TestFullStackDockerE2E maintains backwards-compatibility with existing CI runners.
-func TestFullStackDockerE2E(t *testing.T) {
-	TestCustomerZeroSmoke(t)
-}
-
 func buildSlingCLI(t *testing.T, tempDir, slingRoot string) string {
 	t.Helper()
 	binPath := filepath.Join(tempDir, "sling_bin")
