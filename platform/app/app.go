@@ -363,9 +363,14 @@ func (a *App) shutdown() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.cfg.ShutdownTimeout)
 	defer cancel()
 
+	a.mu.Lock()
+	closers := make([]io.Closer, len(a.closers))
+	copy(closers, a.closers)
+	a.mu.Unlock()
+
 	a.log.Info("closing storage connections")
-	for i := len(a.closers) - 1; i >= 0; i-- {
-		if err := a.closers[i].Close(); err != nil {
+	for i := len(closers) - 1; i >= 0; i-- {
+		if err := closers[i].Close(); err != nil {
 			a.log.Error("error closing resource", "err", err)
 		}
 	}

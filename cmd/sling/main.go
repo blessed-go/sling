@@ -553,6 +553,7 @@ require (
 	}
 
 	fmt.Printf("project [%s] initialized\n", moduleName)
+	fmt.Println("\n       __\n    ->(o )____   *honk*\n      ( ._> 🦂/\n       `-----´")
 
 	if firstService != "" {
 		fmt.Printf("scaffolding service [%s]...\n", firstService)
