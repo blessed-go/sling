@@ -7,6 +7,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/blessed-go/sling/platform/postgres"
 	"github.com/blessed-go/sling/platform/redis"
 )
 
@@ -31,6 +32,10 @@ func (r *CachedRepo) key(id uuid.UUID) string {
 
 // Get implements read-through caching: checks Redis first, falls back to the underlying repository, and populates the cache.
 func (r *CachedRepo) Get(ctx context.Context, id uuid.UUID) (*Item, error) {
+	if postgres.HasTx(ctx) {
+		return r.Repository.Get(ctx, id)
+	}
+
 	val, err := r.rdb.Get(ctx, r.key(id)).Bytes()
 	if err == nil {
 		var item Item
@@ -64,4 +69,3 @@ func (r *CachedRepo) Create(ctx context.Context, item *Item) error {
 
 	return nil
 }
-

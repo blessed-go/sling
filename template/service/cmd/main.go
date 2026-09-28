@@ -51,7 +51,7 @@ func main() {
 	}
 	core.Attach("postgres", pg)
 
-	repo := __SERVICE__.NewRepo(pg.Pool)
+	repo := __SERVICE__.NewRepo(pg)
 	svc := __SERVICE__.NewService(core.Logger(), repo)
 	h := __SERVICE__.NewHandler(svc)
 

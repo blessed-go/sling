@@ -6,15 +6,15 @@ import (
 
 	"uuid"
 
+	"github.com/blessed-go/sling/platform/postgres"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Repo struct {
-	pg *pgxpool.Pool
+	pg *postgres.Client
 }
 
-func NewRepo(pg *pgxpool.Pool) *Repo {
+func NewRepo(pg *postgres.Client) *Repo {
 	return &Repo{pg: pg}
 }
 

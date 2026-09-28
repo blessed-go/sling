@@ -12,7 +12,19 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 5
 
       valkey:
         image: valkey/valkey:9.1-alpine
@@ -39,6 +51,7 @@ jobs:
 
       - name: Run Tests
         env:
+          POSTGRES_TEST_DSN: postgres://postgres:postgres_password@localhost:5432/postgres?sslmode=disable
           REDIS_TEST_ADDR: localhost:6379
         run: go test -v -race -count=1 ./...
 
