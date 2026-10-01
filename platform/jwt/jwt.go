@@ -28,8 +28,8 @@ var (
 
 // Config defines JWT authentication parameters.
 type Config struct {
-	Secret     string        `toml:"secret" env:"JWT_SECRET" env-required:"true" comment:"JWT HMAC-SHA256 secret key"`
-	Expiration time.Duration `toml:"expiration" env:"JWT_EXPIRATION" env-default:"24h" comment:"Access token expiration duration"`
+	Secret     string        `toml:"secret" env:"SECRET" env-required:"true" comment:"JWT HMAC-SHA256 secret key"`
+	Expiration time.Duration `toml:"expiration" env:"EXPIRATION" env-default:"24h" comment:"Access token expiration duration"`
 }
 
 // TokenSigner generates signed access tokens for users.

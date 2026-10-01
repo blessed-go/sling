@@ -30,7 +30,7 @@ type Config struct {
 	ServiceName     string           `toml:"service_name" env:"SERVICE_NAME" env-default:"app"`
 	Environment     string           `toml:"environment" env:"APP_ENV" env-default:"local"`
 	ShutdownTimeout time.Duration    `toml:"shutdown_timeout" env:"SHUTDOWN_TIMEOUT" env-default:"10s" comment:"Graceful shutdown timeout"`
-	Logger          logger.Config    `toml:"logger"`
+	Logger          logger.Config    `toml:"logger" env-prefix:"LOG_"`
 	Telemetry       telemetry.Config `toml:"telemetry"`
 	Profiling       ProfilingConfig  `toml:"profiling"`
 }

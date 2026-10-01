@@ -13,14 +13,14 @@ import (
 
 // Config defines Redis client connection parameters.
 type Config struct {
-	Addr         string        `toml:"addr" env:"REDIS_ADDR" env-default:"redis:6379" comment:"Redis server address (host:port)"`
-	Password     string        `toml:"password" env:"REDIS_PASSWORD" env-default:"" comment:"Authentication password"`
-	DB           int           `toml:"db" env:"REDIS_DB" env-default:"0" comment:"Database index"`
-	PoolSize     int           `toml:"pool_size" env:"REDIS_POOL_SIZE" env-default:"10" comment:"Maximum pool connections"`
-	MinIdleConns int           `toml:"min_idle_conns" env:"REDIS_MIN_IDLE_CONNS" env-default:"2" comment:"Minimum idle connections"`
-	DialTimeout  time.Duration `toml:"dial_timeout" env:"REDIS_DIAL_TIMEOUT" env-default:"5s" comment:"Dial timeout"`
-	ReadTimeout  time.Duration `toml:"read_timeout" env:"REDIS_READ_TIMEOUT" env-default:"3s" comment:"Read timeout"`
-	WriteTimeout time.Duration `toml:"write_timeout" env:"REDIS_WRITE_TIMEOUT" env-default:"3s" comment:"Write timeout"`
+	Addr         string        `toml:"addr" env:"ADDR" env-default:"redis:6379" comment:"Redis server address (host:port)"`
+	Password     string        `toml:"password" env:"PASSWORD" env-default:"" comment:"Authentication password"`
+	DB           int           `toml:"db" env:"DB" env-default:"0" comment:"Database index"`
+	PoolSize     int           `toml:"pool_size" env:"POOL_SIZE" env-default:"10" comment:"Maximum pool connections"`
+	MinIdleConns int           `toml:"min_idle_conns" env:"MIN_IDLE_CONNS" env-default:"2" comment:"Minimum idle connections"`
+	DialTimeout  time.Duration `toml:"dial_timeout" env:"DIAL_TIMEOUT" env-default:"5s" comment:"Dial timeout"`
+	ReadTimeout  time.Duration `toml:"read_timeout" env:"READ_TIMEOUT" env-default:"3s" comment:"Read timeout"`
+	WriteTimeout time.Duration `toml:"write_timeout" env:"WRITE_TIMEOUT" env-default:"3s" comment:"Write timeout"`
 }
 
 // Option configures underlying redis options.

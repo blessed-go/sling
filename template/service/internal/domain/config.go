@@ -8,9 +8,9 @@ import (
 )
 
 type Config struct {
-	Postgres postgres.Config `toml:"postgres"`
-	HTTP     httpx.Config    `toml:"http"`
+	Postgres postgres.Config `toml:"postgres" env-prefix:"POSTGRES_"`
+	HTTP     httpx.Config    `toml:"http"     env-prefix:"HTTP_"`
 	App      app.Config      `toml:"app"`
 
-	// Redis redis.Config `toml:"redis"`
+	// Redis redis.Config `toml:"redis" env-prefix:"REDIS_"`
 }

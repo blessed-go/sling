@@ -17,25 +17,68 @@ import (
 
 type txKey struct{}
 
+// TxManager defines the standard platform contract for atomic transaction execution.
+type TxManager interface {
+	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 // Config defines PostgreSQL connection pool parameters.
 type Config struct {
-	DSN             string        `toml:"dsn" env:"POSTGRES_DSN" comment:"PostgreSQL database connection string"`
-	MaxOpenConns    int           `toml:"max_open_conns" env:"POSTGRES_MAX_OPEN_CONNS" env-default:"25" comment:"Maximum open connections"`
-	MaxIdleConns    int           `toml:"max_idle_conns" env:"POSTGRES_MAX_IDLE_CONNS" env-default:"5" comment:"Maximum idle connections"`
-	ConnMaxLifetime time.Duration `toml:"conn_max_lifetime" env:"POSTGRES_CONN_MAX_LIFETIME" env-default:"15m" comment:"Maximum connection lifetime"`
-	ConnMaxIdleTime time.Duration `toml:"conn_max_idle_time" env:"POSTGRES_CONN_MAX_IDLE_TIME" env-default:"5m" comment:"Maximum connection idle time"`
+	DSN             string        `toml:"dsn" env:"DSN" comment:"PostgreSQL database connection string"`
+	MaxOpenConns    int           `toml:"max_open_conns" env:"MAX_OPEN_CONNS" env-default:"25" comment:"Maximum open connections"`
+	MaxIdleConns    int           `toml:"max_idle_conns" env:"MAX_IDLE_CONNS" env-default:"5" comment:"Maximum idle connections"`
+	ConnMaxLifetime time.Duration `toml:"conn_max_lifetime" env:"CONN_MAX_LIFETIME" env-default:"15m" comment:"Maximum connection lifetime"`
+	ConnMaxIdleTime time.Duration `toml:"conn_max_idle_time" env:"CONN_MAX_IDLE_TIME" env-default:"5m" comment:"Maximum connection idle time"`
+	TxTimeout       time.Duration `toml:"tx_timeout" env:"TX_TIMEOUT" env-default:"3s" comment:"Maximum transaction execution timeout"`
+}
+
+func (c *Config) SetDefaults() {
+	if c.MaxOpenConns <= 0 {
+		c.MaxOpenConns = 25
+	}
+	if c.MaxIdleConns <= 0 {
+		c.MaxIdleConns = 5
+	}
+	if c.ConnMaxLifetime <= 0 {
+		c.ConnMaxLifetime = 15 * time.Minute
+	}
+	if c.ConnMaxIdleTime <= 0 {
+		c.ConnMaxIdleTime = 5 * time.Minute
+	}
+	if c.TxTimeout <= 0 {
+		c.TxTimeout = 3 * time.Second
+	}
+}
+
+// Validate проверяет инварианты конфигурации базы данных
+func (c Config) Validate() error {
+	if c.DSN == "" {
+		return errors.New("dsn is required")
+	}
+	if c.TxTimeout <= 0 {
+		return errors.New("tx_timeout must be greater than 0")
+	}
+	return nil
 }
 
 // Option configures underlying pgxpool settings.
 type Option func(*pgxpool.Config)
 
-// Client wraps a pgxpool.Pool with health check, transaction lifecycle orchestration and metrics registration support.
+// Client wraps a pgxpool.Pool, adding transaction lifecycle orchestration and metrics.
 type Client struct {
 	*pgxpool.Pool
+	cfg Config
 }
+
+var _ TxManager = (*Client)(nil)
 
 // New creates a PostgreSQL connection pool with OpenTelemetry tracing and startup ping.
 func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
+	cfg.SetDefaults() // just in case someone created config out of config.Load
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("postgres: invalid config: %w", err)
+	}
+
 	pgxCfg, err := pgxpool.ParseConfig(cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: invalid dsn: %w", err)
@@ -63,7 +106,7 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("postgres: ping failed: %w", err)
 	}
 
-	return &Client{Pool: pool}, nil
+	return &Client{Pool: pool, cfg: cfg}, nil
 }
 
 // Close closes all connections in the pool.
@@ -132,35 +175,38 @@ func (c *Client) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnN
 
 // WithinTx executes fn inside an atomic transaction.
 // If fn returns an error or panics, the transaction is rolled back.
-// If fn completes successfully, the transaction is committed.
-// Nested WithinTx calls reuse the parent transaction without deadlocks.
-func (c *Client) WithinTx(ctx context.Context, fn func(txCtx context.Context) error) error {
+// If fn completes successfully (nil), the transaction is committed.
+// Nested WithinTx calls safely reuse the parent transaction without deadlocks.
+func (c *Client) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	if HasTx(ctx) {
 		return fn(ctx)
 	}
 
-	tx, err := c.Pool.Begin(ctx)
+	txCtx, cancel := context.WithTimeout(ctx, c.cfg.TxTimeout)
+	defer cancel()
+
+	tx, err := c.Pool.Begin(txCtx)
 	if err != nil {
 		return fmt.Errorf("postgres: begin tx: %w", err)
 	}
 
-	txCtx := context.WithValue(ctx, txKey{}, tx)
+	txCtx = context.WithValue(txCtx, txKey{}, tx)
 
 	defer func() {
 		if p := recover(); p != nil {
-			_ = tx.Rollback(ctx)
+			_ = tx.Rollback(txCtx)
 			panic(p)
 		}
 	}()
 
 	if err := fn(txCtx); err != nil {
-		if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+		if rbErr := tx.Rollback(txCtx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
 			return errors.Join(err, fmt.Errorf("postgres: rollback: %w", rbErr))
 		}
 		return err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if err := tx.Commit(txCtx); err != nil {
 		return fmt.Errorf("postgres: commit tx: %w", err)
 	}
 
