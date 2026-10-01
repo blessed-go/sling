@@ -17,6 +17,7 @@ Every platform package is self-contained under `platform/`. Detailed usage, conf
 | **`platform/redis`** | [README](platform/redis/README.md) | Opt-in | Valkey/Redis client, command tracing, cache decorator, idempotency store |
 | **`platform/jwt`** | [README](platform/jwt/README.md) | Opt-in | HMAC-SHA256 auth, context identity (User ID → logger + tracer) |
 | **`platform/grpcx`** | [README](platform/grpcx/README.md) | Opt-in | Binary RPC transport, interceptors, `app.Runner` lifecycle integration |
+| **`platform/htmx`** | [README](platform/htmx/README.md) | Opt-in | HTMX frontend helpers, safe buffered rendering, client events |
 | **`platform/app`** | [README](platform/app/README.md) | Baseline | Central runtime coordinator, staged graceful shutdown (LIFO), runners |
 | **`platform/logger`** | [README](platform/logger/README.md) | Baseline | Structured `slog` wrapper, tint formatting, OTel trace/span injection |
 | **`platform/telemetry`** | [README](platform/telemetry/README.md) | Baseline | OTel tracer/meter initialization, Prometheus metrics exporter |
