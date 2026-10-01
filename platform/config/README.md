@@ -16,19 +16,20 @@ It is specifically designed for local developer-friendly workflows (Docker volum
 ## Struct Tags
 
 - `toml` — maps structure fields to TOML keys.
+- `env` — binds the field to an environment variable name. Module configs declare relative names (`PORT`, `DSN`, `ADDR`).
+- `env-prefix` — prepends a namespace prefix to all environment variables inside a nested struct (e.g. `env-prefix:"HTTP_"` turns `env:"PORT"` into `HTTP_PORT`). Prevents collisions when multiple modules or instances (e.g. primary vs. replica DB) are mounted together.
 - `env-default` — defines the default value in memory if not present on disk.
 - `env-required="true"` — marks a field as mandatory.
 - `comment` — writes an inline comment next to the field in the config file.
 - `fallback` — references a root-level struct path to pull missing/zero values from if the local block is empty.
-
 ## Usage
 
 ### 1. Define your Config Structs
 
 ```go
 type Config struct {
-	Redis redis.Config `toml:"redis"`
-	Auth  AuthConfig   `toml:"auth"`
+	Redis redis.Config `toml:"redis" env-prefix:"REDIS_"`
+	Auth  AuthConfig   `toml:"auth"  env-prefix:"AUTH_"`
 }
 
 type AuthConfig struct {

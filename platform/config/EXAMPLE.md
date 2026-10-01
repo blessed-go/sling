@@ -17,10 +17,10 @@ type NetworkConfig struct {
 
 // [2] Database configuration template for testing chains and merges
 type DBConfig struct {
-	Host     string `toml:"host" env-default:"localhost" comment:"Database host"`
-	Port     int    `toml:"port" env-default:"5432" comment:"Database port"`
-	Username string `toml:"username" env-default:"postgres"`
-	PoolSize int    `toml:"pool_size" env-default:"10"`
+	Host     string `toml:"host" env:"HOST" env-default:"localhost" comment:"Database host"`
+	Port     int    `toml:"port" env:"PORT" env-default:"5432" comment:"Database port"`
+	Username string `toml:"username" env:"USERNAME" env-default:"postgres"`
+	PoolSize int    `toml:"pool_size" env:"POOL_SIZE" env-default:"10"`
 }
 
 // [3] Optional integration section
@@ -53,11 +53,11 @@ type AppConfig struct {
 	// If AdminTimeout is omitted, it falls back to read_timeout
 	AdminTimeout time.Duration `toml:"admin_timeout" fallback:"read_timeout" comment:"Inherited from NetworkConfig.read_timeout"`
 
-	// [Option G] Fallback chain (DAG): ReplicaDB -> PrimaryDB -> GlobalDB
-	// Note: struct field declaration order does not matter!
-	ReplicaDB DBConfig `toml:"replica_db" fallback:"primary_db" comment:"Replica (inherits from Primary)"`
-	PrimaryDB DBConfig `toml:"primary_db" fallback:"global_db" comment:"Primary (inherits from Global)"`
-	GlobalDB  DBConfig `toml:"global_db" comment:"Root baseline database parameters"`
+	// [Option G] Fallback chain (DAG) + Environment namespacing via env-prefix:
+	// Generates REPLICA_DB_HOST, PRIMARY_DB_HOST, GLOBAL_DB_HOST in environment
+	ReplicaDB DBConfig `toml:"replica_db" env-prefix:"REPLICA_DB_" fallback:"primary_db" comment:"Replica (inherits from Primary)"`
+	PrimaryDB DBConfig `toml:"primary_db" env-prefix:"PRIMARY_DB_" fallback:"global_db" comment:"Primary (inherits from Global)"`
+	GlobalDB  DBConfig `toml:"global_db"  env-prefix:"GLOBAL_DB_"  comment:"Root baseline database parameters"`
 
 	// [Option H] Optional section via nil pointer:
 	// If this section is omitted from TOML, the field remains nil (tracing disabled)
