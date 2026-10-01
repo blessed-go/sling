@@ -16,7 +16,7 @@ const baseModulePath = "github.com/blessed-go/sling/template"
 
 var leftoverRegex = regexp.MustCompile(`__[A-Z0-9_]+__`)
 
-const version = "v0.1.2"
+const version = "v0.1.3"
 
 func main() {
 	if len(os.Args) < 2 {
